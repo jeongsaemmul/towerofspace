@@ -6,7 +6,7 @@
 <title>공간의 탑 21층</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Jua&display=swap" rel="stylesheet">
+<link id="fontCss" href="https://fonts.googleapis.com/css2?family=Jua&display=swap" rel="stylesheet" media="print">
 <style>
 :root{
   color-scheme:dark;
@@ -724,6 +724,34 @@ details.fold summary{cursor:pointer;font-family:var(--disp);font-size:16px}
    ========================================================= */
 
 /* ---------------- 공통 도구 ---------------- */
+/* 저장소: 로컬 파일(file://)·GitHub Pages·사파리 비공개 모드·저장이 막힌 iframe 어디서든 오류 없이 동작해요.
+   저장이 막힌 곳에서는 메모리에만 저장되어, 창을 닫기 전까지는 그대로 이어서 할 수 있어요.
+   GitHub Pages는 한 계정의 모든 저장소가 같은 주소(아이디.github.io)를 쓰기 때문에 저장소 이름으로 기록을 구분해요. */
+const Store = (() => {
+  const mem = {}, has = k => Object.prototype.hasOwnProperty.call(mem, k);
+  let ls = null;
+  try { const t = '__space_tower_test__'; window.localStorage.setItem(t, '1'); window.localStorage.removeItem(t); ls = window.localStorage; } catch (e) { ls = null; }
+  let ns = 'space-tower';
+  try {
+    if (/^https?:$/.test(location.protocol)) {
+      const seg = location.pathname.split('/').filter(Boolean);
+      if (seg.length > 1 || (seg.length === 1 && !/\.html?$/i.test(seg[0]))) ns += ':' + decodeURIComponent(seg[0]);
+    }
+  } catch (e) {}
+  const k = key => ns + '|' + key;
+  return {
+    persistent: !!ls,
+    get(key) {
+      let v = null;
+      try { if (ls) { v = ls.getItem(k(key)); if (v === null) v = ls.getItem(key); } } catch (e) { v = null; }
+      if (v === null && has(key)) v = mem[key];
+      return v;
+    },
+    set(key, val) { mem[key] = String(val); try { if (ls) ls.setItem(k(key), String(val)); } catch (e) {} },
+    remove(key) { delete mem[key]; try { if (ls) { ls.removeItem(k(key)); ls.removeItem(key); } } catch (e) {} },
+  };
+})();
+const safeJSON = (txt, fb) => { try { const v = JSON.parse(txt); return v === null || v === undefined ? fb : v; } catch (e) { return fb; } };
 const $ = s => document.querySelector(s);
 const $$ = s => Array.from(document.querySelectorAll(s));
 const rnd = (a, b) => a + Math.floor(Math.random() * (b - a + 1));
@@ -2291,7 +2319,7 @@ function makeQuestion(f, last, grade) {
 /* ---------------- 효과음 ---------------- */
 const Snd = {
   ctx: null, on: true,
-  init() { if (!this.ctx) { try { const A = window.AudioContext || window.webkitAudioContext; if (A) this.ctx = new A(); } catch (e) { this.ctx = null; } } if (this.ctx && this.ctx.state === 'suspended') this.ctx.resume().catch(() => {}); },
+  init() { if (!this.ctx) { try { const A = window.AudioContext || window.webkitAudioContext; if (A) this.ctx = new A(); } catch (e) { this.ctx = null; } } if (this.ctx && this.ctx.state !== 'running' && this.ctx.state !== 'closed') { try { const r = this.ctx.resume(); if (r && r.catch) r.catch(() => {}); } catch (e) {} } },
   tone(f, d, type = 'square', vol = 0.05, delay = 0, f2) {
     try {
       const c = this.ctx, t0 = c.currentTime + delay, o = c.createOscillator(), g = c.createGain();
@@ -2720,8 +2748,8 @@ function monsterDamage(M, f, H) {
   return Math.max(1, Math.round((10 + f * 1.6) * starAtkMul(M.star) * (M.boss ? 1.4 : 1) * (0.9 + Math.random() * 0.2) * (clsOf(H).id === 'knight' ? 0.8 : 1) * GR().atkMul));
 }
 const DEX_KEY = 'space-tower-dex';
-function dexGet() { try { const a = JSON.parse(localStorage.getItem(DEX_KEY) || '[]'); return new Set(Array.isArray(a) ? a : []); } catch (e) { return new Set(); } }
-function dexAdd(f) { const d = dexGet(); d.add(f); try { localStorage.setItem(DEX_KEY, JSON.stringify([...d])); } catch (e) {} }
+function dexGet() { const a = safeJSON(Store.get(DEX_KEY), []); return new Set(Array.isArray(a) ? a.filter(n => Number.isInteger(n) && n >= 1 && n <= 21) : []); }
+function dexAdd(f) { const d = dexGet(); d.add(f); Store.set(DEX_KEY, JSON.stringify([...d])); }
 const TIERINFO = {
   1: { name: '👁 시점의 구역 (1~7층)', short: '위·앞·옆에서 본 모양' },
   2: { name: '🔢 개수의 구역 (8~14층)', short: '필요한 쌓기나무 개수' },
@@ -2754,13 +2782,13 @@ function newGame(name, preset, cls, grade, bonus, done) {
 }
 function saveGame() {
   if (!G) return;
-  try { localStorage.setItem(SAVE_KEY, JSON.stringify({ v: 1, floor: G.floor, hero: G.hero, stats: G.stats, seen: G.seen, combo: G.combo, grade: G.grade, conceptDone: G.conceptDone || [] })); } catch (e) {}
+  try { Store.set(SAVE_KEY, JSON.stringify({ v: 1, floor: G.floor, hero: G.hero, stats: G.stats, seen: G.seen, combo: G.combo, grade: G.grade, conceptDone: G.conceptDone || [] })); } catch (e) {}
 }
 function loadSave() {
-  try { const s = JSON.parse(localStorage.getItem(SAVE_KEY)); if (s && s.v === 1 && s.floor >= 1 && s.floor <= 21 && s.hero) return s; } catch (e) {}
+  try { const s = safeJSON(Store.get(SAVE_KEY), null); if (s && s.v === 1 && s.floor >= 1 && s.floor <= 21 && s.hero && typeof s.hero === 'object' && s.stats && Array.isArray(s.stats.tier)) return s; } catch (e) {}
   return null;
 }
-function clearSave() { try { localStorage.removeItem(SAVE_KEY); } catch (e) {} }
+function clearSave() { Store.remove(SAVE_KEY); }
 function continueGame(s) {
   TOK++;
   G = { floor: s.floor, hero: s.hero, mon: null, q: null, qNo: 0, combo: s.combo || 0, phase: 'idle', lastType: null, stats: s.stats, seen: s.seen || [false, false, false], grade: GRADES[s.grade] ? s.grade : 6, conceptDone: s.conceptDone || [] };
@@ -3232,11 +3260,11 @@ function showHallOfFame() {
     </div></div>
     <div class="mrow noprint"><button class="big ghost" id="mAgain">🔁 다시 도전하기</button><button class="big" id="mPrint">🖨️ 화면 캡처/인쇄</button></div>
     <div class="noprint" id="capGuide" hidden style="margin:10px auto 0;max-width:560px;background:rgba(0,0,0,.35);border:1px solid var(--line);border-radius:12px;padding:10px 14px;font-size:13.5px;line-height:1.7">
-      <b style="color:#ffe9a8">📸 이 카드를 저장하는 방법</b><br>
+      <b style="color:#ffe9a8">📸 인쇄 창이 열리지 않으면 이렇게 저장해요</b><br>
       · 윈도우: <b>Win + Shift + S</b> 를 누르고 카드를 드래그해요<br>
       · 맥: <b>Cmd + Shift + 4</b> 를 누르고 카드를 드래그해요<br>
       · 태블릿·휴대폰: <b>전원 + 음량 작게</b> 버튼을 함께 눌러요<br>
-      · 종이로 뽑으려면 HTML 파일을 직접 열어 이 버튼을 누르면 인쇄 창이 열려요</div>`, 'hofbox');
+      · 인쇄 창에서 대상을 'PDF로 저장'으로 바꾸면 파일로도 저장돼요</div>`, 'hofbox');
   const hof = $('#hof'), shine = hof.querySelector('.hof-shine');
   const tilt = e => {
     const r = hof.getBoundingClientRect(), x = (e.clientX - r.left) / r.width - 0.5, y = (e.clientY - r.top) / r.height - 0.5;
@@ -3246,12 +3274,11 @@ function showHallOfFame() {
   hof.addEventListener('pointermove', tilt);
   hof.addEventListener('pointerleave', () => { hof.style.transform = ''; shine.style.setProperty('--sx', '-30%'); });
   $('#mAgain').onclick = () => { Music.setMood(1, false); showTitle(); };
-  // 파일로 열었을 때는 인쇄 창을, 웹 링크(다른 페이지 안에 들어간 화면)에서는 캡처 방법을 보여 줘요
+  // 로컬 파일·GitHub Pages에서는 인쇄 창이 열리고, 인쇄가 막힌 곳에서도 캡처 방법을 함께 보여 줘요
   $('#mPrint').onclick = () => {
     hof.style.transform = '';
-    let embedded = true; try { embedded = window.self !== window.top; } catch (e) { embedded = true; }
-    $('#capGuide').hidden = false;
-    if (!embedded) { try { window.print(); } catch (e) {} }
+    $('#capGuide').hidden = false;   // 인쇄 창이 막힌 환경(다른 페이지 안에 넣은 경우 등)을 위한 캡처 안내
+    try { if (typeof window.print === 'function') window.print(); } catch (e) {}
   };
   Snd.play('fanfare'); confetti(25);
 }
@@ -3667,8 +3694,8 @@ function showTierIntro(t, thenQuestion) {
   $('#mConcept').onclick = () => openConcept({ grade: g, chapter: t - 1, inGame: true, done: G.conceptDone || [], onExit: after });
 }
 const PREF_KEY = 'space-tower-pref';
-function loadPref() { try { const p = JSON.parse(localStorage.getItem(PREF_KEY) || '{}'); return p && typeof p === 'object' ? p : {}; } catch (e) { return {}; } }
-function savePref(p) { try { localStorage.setItem(PREF_KEY, JSON.stringify(p)); } catch (e) {} }
+function loadPref() { const p = safeJSON(Store.get(PREF_KEY), {}); return p && typeof p === 'object' ? p : {}; }
+function savePref(p) { Store.set(PREF_KEY, JSON.stringify(p)); }
 function showTitle() {
   TOK++;
   if (CP.on) closeConcept();
@@ -3787,16 +3814,31 @@ function boot() {
   $('#btnPotion').addEventListener('click', usePotion);
   $('#btnShop').addEventListener('click', () => openShop(false));
   $('#btnMenu').addEventListener('click', showMenu);
-  try { const pr = JSON.parse(localStorage.getItem('space-tower-audio') || '{}'); if (pr.m === false) Music.on = false; if (pr.s === false) Snd.on = false; } catch (e) {}
-  const saveAudio = () => { try { localStorage.setItem('space-tower-audio', JSON.stringify({ m: Music.on, s: Snd.on })); } catch (e) {} };
+  const pr = safeJSON(Store.get('space-tower-audio'), {}) || {}; if (pr.m === false) Music.on = false; if (pr.s === false) Snd.on = false;
+  const saveAudio = () => Store.set('space-tower-audio', JSON.stringify({ m: Music.on, s: Snd.on }));
   const audioBtns = () => { $('#btnSound').textContent = Snd.on ? '🔊' : '🔇'; $('#btnMusic').textContent = Music.on ? '🎵' : '🔕'; $('#btnMusic').style.opacity = Music.on ? 1 : .6; };
   audioBtns();
   $('#btnSound').addEventListener('click', () => { Snd.on = !Snd.on; audioBtns(); saveAudio(); if (Snd.on) Snd.play('tick'); });
   $('#btnMusic').addEventListener('click', () => { Music.on = !Music.on; audioBtns(); saveAudio(); if (Music.on) Music.start(); else Music.stop(); });
   // 브라우저 정책상 소리는 첫 클릭/터치 뒤에 시작돼요
-  const firstGesture = () => { Snd.init(); if (Music.on) Music.start(); };
-  document.addEventListener('pointerdown', firstGesture, { once: true });
-  document.addEventListener('keydown', firstGesture, { once: true });
+  // 브라우저(특히 iOS 사파리)는 사용자가 화면을 누른 뒤에만 소리를 허용해서, 누를 때마다 소리 장치를 깨워요.
+  const unlockAudio = () => { if (!Snd.on && !Music.on) return; Snd.init(); if (Music.on) Music.start(); };
+  ['pointerdown', 'touchend', 'click', 'keydown'].forEach(ev => document.addEventListener(ev, unlockAudio, { passive: true }));
+  document.addEventListener('visibilitychange', () => {
+    const c = Snd.ctx; if (!c) return;
+    try {
+      if (document.hidden) { const r = c.suspend && c.suspend(); if (r && r.catch) r.catch(() => {}); }
+      else if (Snd.on || Music.on) { const r = c.resume && c.resume(); if (r && r.catch) r.catch(() => {}); }
+    } catch (e) {}
+  });
+  // 글꼴은 화면을 막지 않도록 나중에 적용해요 (인터넷이 없거나 막혀 있으면 기본 글꼴로 실행)
+  const fl = document.getElementById('fontCss');
+  if (fl) {
+    const onFont = () => { fl.media = 'all'; Scene.dirty = true; };
+    let ready = false; try { ready = !!fl.sheet; } catch (e) { ready = false; }
+    if (ready) onFont(); else { fl.addEventListener('load', onFont); fl.addEventListener('error', () => {}); }
+    if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => { Scene.dirty = true; }).catch(() => {});
+  }
   setInterval(tickTimer, 100);
   document.addEventListener('keydown', e => {
     if (!G || e.target.tagName === 'INPUT') return;
@@ -3825,7 +3867,28 @@ function boot() {
 }
 // 검증용으로 노출 (게임 진행에는 영향 없음)
 window.SpaceTower = { GRADES, poolFor, netValid, netFaces, netFrames, netOpposite, NET_OK, NET_FREE, NET_BAD, NET_CROSS, NET_LINE5, HEXO, canon, rotK, SOLID_INFO, getSolid, openConcept, CONCEPTS, get CP() { return CP; }, cellsKey, freeKey, newGame, H_HIDDEN, victory, MONSTERS, makeMonster, atkOf, CLASSES, charSVG, Music, rankOf, get CINE() { return CINE; }, makeQuestion, solveViews, frontProfile, sideProfile, topMat, profileMat, matKey, numKey, topsVisible, total, maxOf, layerMat, connected, get G() { return G; } };
-document.addEventListener('DOMContentLoaded', boot);
+// 예기치 못한 오류가 나도 게임이 멈추지 않게, 안내만 한 번 보여 줘요.
+let ERR_SHOWN = false;
+function reportError(msg) {
+  const m = String(msg || '');
+  if (/ResizeObserver loop|Script error\.?$|NotAllowedError|AbortError/i.test(m)) return;   // 브라우저가 내는 무해한 알림
+  console.error('[공간의 탑]', m);
+  if (ERR_SHOWN) return; ERR_SHOWN = true;
+  try { toast('⚠️ 잠깐 문제가 생겼어요. 계속 안 되면 새로고침(F5) 해 주세요', 'warn'); } catch (e) {}
+}
+window.addEventListener('error', e => reportError(e && (e.message || (e.error && e.error.message))));
+window.addEventListener('unhandledrejection', e => reportError(e && e.reason && (e.reason.message || e.reason)));
+function safeBoot() {
+  try { boot(); }
+  catch (e) {
+    console.error(e);
+    const d = document.createElement('div');
+    d.style.cssText = 'position:fixed;inset:0;z-index:99;display:flex;align-items:center;justify-content:center;padding:24px;background:#05041a;color:#f3eeff;font:16px/1.7 sans-serif;text-align:center';
+    d.innerHTML = '게임을 시작하지 못했어요.<br>최신 크롬·엣지·사파리·웨일 브라우저에서 열거나 새로고침해 주세요.<br><small style="opacity:.6">' + String(e && e.message || e).replace(/[<>&]/g, '') + '</small>';
+    document.body.appendChild(d);
+  }
+}
+if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', safeBoot); else safeBoot();
 </script>
 </body>
 </html>
